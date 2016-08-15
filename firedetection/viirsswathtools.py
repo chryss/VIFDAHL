@@ -29,7 +29,7 @@ def get_skips_by_col(col, zeros=[], length=None, ascending=True):
     if not length:
         length = col.shape[0]
     if len(zeros) == 0:
-        return []
+        return np.zeros(length)
     skipindices = []
     outcol = np.zeros(length)
     if length < np.max(np.max(zeros)):
