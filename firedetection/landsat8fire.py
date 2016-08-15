@@ -15,33 +15,52 @@ Chris Waigl, 2016-07-01
 from __future__ import print_function, unicode_literals
 import numpy as np
 
-def get_l8fire(landsatscene, mask=None, high_only=False, anomalies=True):
+def get_l8fire(
+               landsatscene, 
+               mask=None, 
+               high_only=False, 
+               anomalies=True,
+               debug=False):
     """
     Takes L8 scene, returns 2D Boolean numpy array of same shape
     """
+    if debug:
+        print("Getting Landsat 8 reflectances")
     rho = get_reflectances(landsatscene, mask=mask)
     allfire, unambiguous, anomalous, marginal = get_l8fire_frombands(
         rho['1'], rho['2'], rho['3'], rho['4'],
         rho['5'], rho['6'], rho['7'],
-        high_only=high_only, anomalies=anomalies)
+        high_only=high_only, anomalies=anomalies, debug=debug)
     return allfire, unambiguous, anomalous, marginal
 
 def get_l8fire_frombands(rho1, rho2, rho3, rho4,
                           rho5, rho6, rho7,
-                          high_only=False, anomalies=True):
+                          high_only=False, anomalies=True, debug=False):
     """rho[n] is the reflectance in band n"""
     R75 = rho7/rho5
 
+    if debug:
+        print("Getting unambiguous fires")
     firecond1 = get_unambiguousfire(rho5, rho7, R75)
+    if debug:
+        print("There are {} unambiguous fires".format(sum(sum(firecond1))))
     firecond2 = None
     firecond3 = None
 
     if anomalies:
+        if debug:
+            print("Getting anomalous fires")
         firecond2 = get_anomalousfire(rho1, rho5, rho6, rho7)
+        if debug:
+            print("There are {} anomalous fires".format(sum(sum(firecond2))))
 
     if not high_only:
+        if debug:
+            print("Getting candidates for marginal fires")
         firecond3 = get_marginalfire(rho5, rho7, R75)
         # check if marginal candidates are actual fire pixels
+        if debug:
+            print("Preparing data for verifying marginal fires")
         R76 = rho7/rho6
         firecond3 = np.logical_and(~firecond1, firecond3)
         firecond3 = np.logical_and(~firecond2, firecond3)
@@ -52,9 +71,11 @@ def get_l8fire_frombands(rho1, rho2, rho3, rho4,
             otherfirecond = np.logical_or(
                 firecond1, firecond2
             )
+        if debug:
+            print("Verifying {} candidates for marginal fires".format(sum(sum(firecond3))))
         firecond3 = get_verified_fires(
             firecond3, otherfirecond, rho1, rho2,
-            rho3, rho4, rho5, rho6, rho7)
+            rho3, rho4, rho5, rho6, rho7, debug=debug)
     allfires = np.logical_or(firecond1, firecond2)
     allfires = np.logical_or(allfires, firecond3)
     return allfires, firecond1, firecond2, firecond3
@@ -77,18 +98,25 @@ def get_marginalfire(rho5, rho7, R75):
 
 def get_verified_fires(firecond3, otherfirecond,
                        rho1, rho2, rho3,
-                       rho4, rho5, rho6, rho7):
+                       rho4, rho5, rho6, rho7, debug=False):
     """Boolean 2D array of verified marginal fire pixels"""
     iidxmax, jidxmax = firecond3.shape
     output = np.zeros((iidxmax, jidxmax))
 
-    windows = [get_window(ii, jj, 30, iidxmax, jidxmax)
-               for ii, jj in np.argwhere(firecond3)]
-    window = np.any(windows, axis=0)
+    if debug:
+        print("Generating mask of valid pixel to validate {} marginal candidates".format(
+            sum(sum(firecond3))
+        ))
+        idx1 = 0
+        idx2 = 1
+        N = sum(sum(firecond3))
+#    windows = [get_window(ii, jj, 30, iidxmax, jidxmax)
+#               for ii, jj in np.argwhere(firecond3)]
+#    window = np.any(windows, axis=0)
     validwindow = get_valid_pixels(otherfirecond, rho1, rho2, rho3,
-                                   rho4, rho5, rho6, rho7,
-                                   mask=~window)
-
+                               rho4, rho5, rho6, rho7)
+    if debug:
+        print("Starting loop through candidate locations.")
     for ii, jj in np.argwhere(firecond3):
         window = get_window(ii, jj, 30, iidxmax, jidxmax)
         newmask = np.logical_or(~window, ~validwindow.data)
@@ -102,6 +130,14 @@ def get_verified_fires(firecond3, otherfirecond,
         R75_test = R75_win[ii, jj]- R75_bar > max(3*R75_std, 0.8)
         if rho7_test and R75_test:
             output[ii, jj] = 1
+        if debug:
+            idx1 += 1
+            if idx1 * 100 / N > idx2:
+                if (idx1 * 100 / N) % 10 == 0:
+                    print("{}% ".format(idx1 * 100 / N), end="")
+                else:
+                    print(". ", end="")
+                idx2 += 1
     return output == 1
 
 def get_valid_pixels(otherfirecond, rho1, rho2, rho3,
