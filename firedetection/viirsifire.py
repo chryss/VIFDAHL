@@ -11,6 +11,7 @@ import numpy as np
 ANOM4_1 = 193
 SATT4 = 367.
 MINT4 = 320.
+MINT4_NIGHT = 290.
 MINT5_DAY = 285.
 MINT5_SPECIAL = 312.
 CLOUDT5_NIGHT = 265.
@@ -23,6 +24,7 @@ def getfireconditions_fromrasters(
     pixq4, pixq5,
     daytime=True,
     mint4= MINT4,
+    mint4_night= MINT4_NIGHT,
     mint5_day=MINT5_DAY,
     mint5_special=MINT5_SPECIAL):
     """Returns anomalous, high, low boolean fire condition rasters"""
@@ -40,13 +42,13 @@ def getfireconditions_fromrasters(
             hotcondition, ~anomalouscondition)
         warmcondition = np.logical_or(
             i45 >= NORMDIFFTHRESH2, np.logical_and(
-                i45 >= NORMDIFFTHRESH3, i5tb >= mint5_special))
+            i45 >= NORMDIFFTHRESH3, i5tb >= mint5_special))
+        warmcondition = np.logical_and(
+            warmcondition, i5tb > 285)
         warmcondition = np.logical_and(
             warmcondition, i4tb > mint4)
         warmcondition = np.logical_and(
             ~hotcondition, warmcondition)
-        warmcondition = np.logical_and(
-            warmcondition, i5tb > mint5_day)
     else:
         cloudcondition = (i5tb < CLOUDT5_NIGHT)
         hotcondition = (i45 >= NORMDIFFTHRESH1)
@@ -54,7 +56,7 @@ def getfireconditions_fromrasters(
         hotcondition = np.logical_and(
             ~anomalouscondition, hotcondition)
         warmcondition = np.logical_and(~hotcondition, i45 >= NORMDIFFTHRESH3)
-        warmcondition = np.logical_and(i4tb > mint4, warmcondition)
+        warmcondition = np.logical_and(i4tb > mint4_night, warmcondition)
         warmcondition = np.logical_and(~cloudcondition, warmcondition)
         
     return anomalouscondition, hotcondition, warmcondition
