@@ -193,20 +193,30 @@ def getgranulecatalog(basedir, overpassdirlist=None):
                 viirs.close()
     return catalog 
 
-def generate_overviewbase():
+def generate_overviewbase(
+        width=2000000, height=1800000,
+        resolution='l', projection='aea',
+        lat_1=60., lat_2=70., lat_0=65, lon_0=-150,
+        rivercolor=water, continentcolor=earth,
+        lakecolor=water, oceancolor=water, 
+        meridianrange=np.arange(-180, 180, 5),
+        meridianlabels=[False, False, False, 1],
+        parallelrange=np.arange(0, 80, 2),
+        parallellabels=[1, 1, False, False]
+        ):
     mm = Basemap(
-        width=2000000, height=1800000, 
-        resolution='l', 
+        width=width, height=height, 
+        resolution=resolution, 
         projection='aea', 
-        lat_1=60., lat_2=70., lat_0=65, lon_0=-150)
+        lat_1=lat_1, lat_2=lat_2, lat_0=lat_0, lon_0=lon_0)
     mm.drawcoastlines()
-    mm.drawrivers(color=water, linewidth=1.5)
-    mm.drawmeridians(np.arange(-180, 180, 5), labels=[False, False, False, 1])
-    mm.drawparallels(np.arange(0, 80, 2), labels=[1, 1, False, False])
+    mm.drawrivers(color=rivercolor, linewidth=1.5)
+    mm.drawmeridians(meridianrange, labels=meridianlabels)
+    mm.drawparallels(parallelrange, labels=parallellabels)
     mm.fillcontinents(        
-        color=earth,
-        lake_color=water)
-    mm.drawmapboundary(fill_color=water)
+        color=continentcolor,
+        lake_color=lakecolor)
+    mm.drawmapboundary(fill_color=oceancolor)
 #    mm.readshapefile(
 #        "/Volumes/SCIENCE/GIS_Data/catalog.data.gov/tl_2013_02_prisecroads/tl_2013_02_prisecroads", 
 #        'roads', 
@@ -305,9 +315,13 @@ def makeplot(viirsdatasetlist, title=None, band='i4'):
     cbar = mm.colorbar(dataplt, location='bottom', pad="15%")
     cbar.set_label("$T_B$ in $K$")
 
-def getdatestamp_AKDT(viirsdataset, spaces=True):
-    timestamp =  (viirsdataset.meta['Data_Product']['AggregateBeginningDate'] +  
-                  u'_' + viirsdataset.meta['Data_Product']['AggregateBeginningTime'])
+def getdatestamp_AKDT(viirsdataset, idx=None, spaces=True):
+    if idx is not None:
+        timestamp =  (viirsdataset.meta['Data_Product'][idx]['AggregateBeginningDate'] +  
+                  u'_' + viirsdataset.meta['Data_Product'][idx]['AggregateBeginningTime'])
+    else:
+        timestamp =  (viirsdataset.meta['Data_Product']['AggregateBeginningDate'] +  
+                  u'_' + viirsdataset.meta['Data_Product']['AggregateBeginningTime'])        
     if spaces:
         datestamp_AK = (dt.datetime.strptime(timestamp, '%Y%m%d_%H%M%S.%fZ') + 
                     dt.timedelta(hours=-8)).strftime('%Y-%m-%d %H:%M:%S AKDT')
@@ -316,10 +330,16 @@ def getdatestamp_AKDT(viirsdataset, spaces=True):
                     dt.timedelta(hours=-8)).strftime('%Y%m%d_%H%M%S_AKDT')
     return datestamp_AK
 
-def get_date_UTC(viirsdataset):
-    dateutc = viirsdataset.meta['Data_Product']['AggregateBeginningDate']
+def get_date_UTC(viirsdataset, idx=None):
+    if idx is not None:
+        dateutc = viirsdataset.meta['Data_Product'][idx]['AggregateBeginningDate']
+    else:
+        dateutc = viirsdataset.meta['Data_Product']['AggregateBeginningDate']
     return dt.datetime.strptime(dateutc, '%Y%m%d').strftime('%Y-%m-%d')
 
-def get_time_UTC(viirsdataset):
-    timeutc = viirsdataset.meta['Data_Product']['AggregateBeginningTime']
+def get_time_UTC(viirsdataset, idx=None):
+    if idx is not None:
+        timeutc = viirsdataset.meta['Data_Product'][idx]['AggregateBeginningTime']
+    else:
+        timeutc = viirsdataset.meta['Data_Product']['AggregateBeginningTime']
     return dt.datetime.strptime(timeutc, '%H%M%S.%fZ').strftime('%H%M')
