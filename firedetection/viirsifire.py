@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-Generate fire product from VIIRS I-band data
+Generate VIFDAHL fire product from VIIRS I-band data
 
 Chris Waigl, 2016-04-01
 """
