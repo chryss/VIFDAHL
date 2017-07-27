@@ -54,9 +54,22 @@ def isoutsideAK(latsarray, minlat=55., maxlat=72.):
 def dedupedlist(mylist):
     return list(OrderedDict.fromkeys(mylist))
 
+def getmatches(datafilelist, regex=None):
+    if not regex:
+        regex = re.compile(
+            r"""
+            (?P<ftype>[A-Z0-9]{5})  # band type of data file
+            _[a-z]+                     # sat id
+            _d(?P<date>\d{8})           # acq date
+            _t(?P<time>\d{7})           # granule start time UTC
+            _e\d+                       # granule end tile UTC
+            _b(?P<orbit>\d+)            # orbit number
+            _c\d+                       # file creation date/time
+            _\w+.h5                     # more stuff 
+            """, re.X)
+    return [regex.search(filename) for filename in datafilelist]
+
 def getoverpasses(basedir, scenelist=[], ):
-    regex = re.compile(
-r"(?P<ftype>[A-Z0-9]{5})_[a-z]+_d(?P<date>\d{8})_t(?P<time>\d{7})_e\d+_b(\d+)_c\d+_\w+.h5")
     if scenelist:
         subdirs = filter(
             os.path.isdir, 
@@ -69,7 +82,10 @@ r"(?P<ftype>[A-Z0-9]{5})_[a-z]+_d(?P<date>\d{8})_t(?P<time>\d{7})_e\d+_b(\d+)_c\
     for subdir in subdirs:
         basename = os.path.split(subdir)[-1]
         overpasses[basename] = {}
-        overpasses[basename]['dir'] = os.path.join(subdir, 'sdr')
+        if os.path.isdir(os.path.join(subdir, 'sdr')):
+            overpasses[basename]['dir'] = os.path.join(subdir, 'sdr')
+        else:
+            overpasses[basename]['dir'] = subdir
         datafiles = sorted(
             [item for item in os.listdir(
                 overpasses[basename]['dir']) if item.endswith('.h5')])
@@ -77,14 +93,34 @@ r"(?P<ftype>[A-Z0-9]{5})_[a-z]+_d(?P<date>\d{8})_t(?P<time>\d{7})_e\d+_b(\d+)_c\
             overpasses[basename]['message'] = "Some data files are missing in {}: {} is not divisible by 25".format(basename, len(datafiles))
         numgran = len(datafiles)//25
         overpasses[basename]['numgranules'] = numgran
-        mos = [regex.search(filename) for filename in datafiles]
+        mos = getmatches(datafiles)
         overpasses[basename]['datetimes'] = dedupedlist([mo.groupdict()['date'] + '_' + mo.groupdict()['time'] for mo in mos])
         for ftype in [mo.groupdict()['ftype'] for mo in mos ]:
             overpasses[basename][ftype] = [filename for filename in datafiles if filename.startswith(ftype) ]
     return overpasses
 
+def getoverpassesbygranulefordir(dirname):
+    overpasses = {}
+    if os.path.isdir(os.path.join(dirname, 'sdr')):
+        overpasses['dir'] = os.path.join(dirname, 'sdr')
+    else:
+        overpasses['dir'] = dirname
+    datafiles = sorted([item for item in os.listdir(
+        overpasses['dir']) if item.endswith('.h5')])
+    if len(datafiles)%25 != 0:
+        overpasses['message'] = "Some data files are missing in {}: {} is not divisible by 25".format(dirname, len(datafiles))
+    mos = getmatches(datafiles)
+    for mo, fname in zip(mos, datafiles):
+        granulestr = mo.groupdict()['date'] + '_' + mo.groupdict()['time']
+        ftype = mo.groupdict()['ftype']
+        try: 
+            overpasses[granulestr][ftype] = fname
+        except KeyError:
+            overpasses[granulestr] = {}
+            overpasses[granulestr][ftype] = fname
+    return overpasses
+
 def getfilesbygranule(basedir, scenelist=[]):
-    regex = re.compile(r"(?P<ftype>[A-Z0-9]{5})_[a-z]+_d(?P<date>\d{8})_t(?P<time>\d{7})_e\d+_b(\d+)_c\d+_\w+.h5")
     if scenelist:
         subdirs = filter(os.path.isdir, [os.path.join(basedir, item) for item in scenelist])
     else:
@@ -92,26 +128,13 @@ def getfilesbygranule(basedir, scenelist=[]):
     overpasses = OrderedDict()
     for subdir in subdirs:
         basename = os.path.split(subdir)[-1]
-        overpasses[basename] = {}
-        overpasses[basename]['dir'] = os.path.join(subdir, 'sdr')
-        datafiles = sorted([item for item in os.listdir(overpasses[basename]['dir']) if item.endswith('.h5')])
-        if len(datafiles)%25 != 0:
-            overpasses[basename]['message'] = "Some data files are missing in {}: {} is not divisible by 25".format(basename, len(datafiles))
-        numgran = len(datafiles)//25
-        mos = [regex.search(filename) for filename in datafiles]
-        for mo, fname in zip(mos, datafiles):
-            granulestr = mo.groupdict()['date'] + '_' + mo.groupdict()['time']
-            ftype = mo.groupdict()['ftype']
-            try: 
-                overpasses[basename][granulestr][ftype] = fname
-            except KeyError:
-                overpasses[basename][granulestr] = {}
-                overpasses[basename][granulestr][ftype] = fname
+        overpasses[basename] = getoverpassesbygranulefordir(basename)
+        overpasses[basename]['dir'] = currdir
     return overpasses
     
 def checkdir(basedir, subdirlist=[]):
     if not subdirlist:
-        dirlist = sorted(glob.glob(os.path.join(basedir, "2015*")))
+        dirlist = sorted(glob.glob(os.path.join(basedir, "201*")))
     else:
         dirlist = filter(os.path.isdir, [os.path.join(basedir, item) for item in subdirlist])
     for dir in dirlist:
