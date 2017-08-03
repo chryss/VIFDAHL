@@ -15,8 +15,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from mpl_toolkits.basemap import Basemap
 from shapely.geometry import Polygon
-
 from pygaarst import raster
+from pygaarst.rasterhelpers import PygaarstRasterError
 
 earth='cornsilk'
 water='lightskyblue'
@@ -49,12 +49,13 @@ def isoutsideAK(latsarray, minlat=55., maxlat=72.):
     """Presumes 2D array of latitudes - looks only at first and last valid row"""
     firstrow, lastrow = getgoodrows(latsarray)
     alloutside = True
-    
 
 def dedupedlist(mylist):
+    """Dedupe a list"""
     return list(OrderedDict.fromkeys(mylist))
 
 def getmatches(datafilelist, regex=None):
+    """Takes list of search strings + regex. Returns a list of match objects"""
     if not regex:
         regex = re.compile(
             r"""
@@ -70,6 +71,7 @@ def getmatches(datafilelist, regex=None):
     return [regex.search(filename) for filename in datafilelist]
 
 def getoverpasses(basedir, scenelist=[], ):
+    """Get list of dict of overpasses, file names classified by band type"""
     if scenelist:
         subdirs = filter(
             os.path.isdir, 
@@ -128,8 +130,8 @@ def getfilesbygranule(basedir, scenelist=[]):
     overpasses = OrderedDict()
     for subdir in subdirs:
         basename = os.path.split(subdir)[-1]
-        overpasses[basename] = getoverpassesbygranulefordir(basename)
-        overpasses[basename]['dir'] = currdir
+        overpasses[basename] = getoverpassesbygranulefordir(subdir)
+        overpasses[basename]['dir'] = subdir
     return overpasses
     
 def checkdir(basedir, subdirlist=[]):
@@ -183,8 +185,8 @@ def checkviirsganulecomplete(granuledict, dataset='iband'):
             return complete
     return complete
 
-def getgranulecatalog(basedir, overpassdirlist=None):
-    intermediary = getfilesbygranule(basedir, scenelist=overpassdirlist)
+def getgranulecatalog(basedir, scenelist=None):
+    intermediary = getfilesbygranule(basedir, scenelist=scenelist)
     catalog = {}
     for overpass in intermediary:
         for granule in intermediary[overpass]:
@@ -193,27 +195,42 @@ def getgranulecatalog(basedir, overpassdirlist=None):
             catalog[granule] = intermediary[overpass][granule]
             catalog[granule][u'dir'] = intermediary[overpass]['dir']
             for datasettype in BANDFILES:
-                catalog[granule][datasettype + u'_complete'] = checkviirsganulecomplete(catalog[granule])
+                catalog[granule][datasettype + u'_complete'
+                    ] = checkviirsganulecomplete(catalog[granule])
             if catalog[granule][u'iband_complete']:
                 try:
                     viirs = raster.VIIRSHDF5(os.path.join(
                             catalog[granule][u'dir'], 
                             catalog[granule][u'SVI01']))
-                except IOError:
-                    print("cannot access data file for I-band in {}".format(granule))
+                except (PygaarstRasterError, IOError) as err:
+                    print("cannot access data file for I-band in {}".format(
+                            granule))
+                    print(err)
                     catalog[granule][u'iband_complete'] = False
                     continue
-                catalog[granule][u'granuleID'] = viirs.meta[u'Data_Product'][u'AggregateBeginningGranuleID']
-                catalog[granule][u'orbitnumber'] = viirs.meta[u'Data_Product'][u'AggregateBeginningOrbitNumber']
+                catalog[granule][u'granuleID'] = viirs.meta[
+                    u'Data_Product'][u'AggregateBeginningGranuleID']
+                catalog[granule][u'orbitnumber'] = viirs.meta[
+                    u'Data_Product'][u'AggregateBeginningOrbitNumber']
                 try:
                     catalog[granule][u'ascending_node'] = viirs.ascending_node
                     edgelons, edgelats = getedge(viirs)
-                except IOError:
-                    print("cannot access geodata file for I-band in {}".format(granule))
+                except (PygaarstRasterError, IOError) as err:
+                    print("cannot access geodata file for I-band in {}".format(
+                        granule))
+                    print(err)
                     catalog[granule][u'iband_complete'] = False
                     continue
-                catalog[granule][u'edgepolygon_I'] = Polygon(zip(edgelons, edgelats)).wkt
-                viirs.close()
+                catalog[granule][u'edgepolygon_I'] = Polygon(
+                    zip(edgelons, edgelats)).wkt
+                try:
+                    viirs.close()
+                except (PygaarstRasterError, IOError) as err:
+                    print("cannot access some necessary file file for I-band in {}".format(
+                            granule))
+                    print(err)
+                    catalog[granule][u'iband_complete'] = False
+                    continue
     return catalog 
 
 def generate_overviewbase(
