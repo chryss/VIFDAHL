@@ -2,7 +2,7 @@
 # coding=utf-8
 """
 Helper functions for processing VIIRS HDF5 files: handling swath and
-geolocation data 
+geolocation data
 
 Chris Waigl, 2016-03-01
 """
